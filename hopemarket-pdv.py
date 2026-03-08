@@ -5,7 +5,7 @@ v2.0 - Com limites mensais, validação e impressão direta
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-import threading, os, json
+import threading, os, json, requests
 from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -865,6 +865,8 @@ class HopeMarketPDV:
         self._build_ui()
         self._carregar_beneficiarios()
         self._carregar_estoque()
+        # Verifica atualizacao apos 4 segundos
+        self.root.after(4000, self._verificar_atualizacao)
 
     def _build_ui(self):
         # Topo
@@ -1158,6 +1160,7 @@ class HopeMarketPDV:
         self.lbl_saldo_rest.config(text=f"{saldo} HC", fg=VERDE)
         self.entry_nome.delete(0, "end"); self.entry_tel.delete(0, "end")
         for w in self.lista_frame.winfo_children(): w.destroy()
+        self.lista_frame.grid_remove()
         self._build_itens(); self._build_carrinho_ui()
         self.lbl_status.config(text=f"✓ {nome}  |  Saldo: {saldo} HC", fg=VERDE)
 
@@ -1527,16 +1530,22 @@ def verificar_atualizacao(callback_resultado):
     """Verifica silenciosamente se há versão nova no GitHub."""
     def check():
         try:
+            print(f"[Update] Verificando versao em: {VERSION_URL}")
             resp = requests.get(VERSION_URL, timeout=5)
+            versao_nova = resp.text.strip()
+            print(f"[Update] Versao atual: {VERSAO_ATUAL} | Versao GitHub: {versao_nova}")
             if resp.status_code == 200:
-                versao_nova = resp.text.strip()
                 if versao_nova != VERSAO_ATUAL:
+                    print(f"[Update] Nova versao disponivel: {versao_nova}")
                     callback_resultado(versao_nova)
                 else:
+                    print("[Update] Sistema ja esta na versao mais recente.")
                     callback_resultado(None)
             else:
+                print(f"[Update] Erro HTTP: {resp.status_code}")
                 callback_resultado(None)
-        except Exception:
+        except Exception as ex:
+            print(f"[Update] Erro ao verificar: {ex}")
             callback_resultado(None)
     threading.Thread(target=check, daemon=True).start()
 
@@ -1593,10 +1602,10 @@ class JanelaAtualizacao(tk.Toplevel):
 
     def _build(self):
         # Header
-        hdr = tk.Frame(self, bg=VERDE_ESCURO, pady=14)
+        hdr = tk.Frame(self, bg=VERDE3, pady=14)
         hdr.pack(fill="x")
         tk.Label(hdr, text="🔄  Atualização Disponível!",
-                 font=("Georgia", 14, "bold"), bg=VERDE_ESCURO, fg=OFFWHITE).pack()
+                 font=("Georgia", 14, "bold"), bg=VERDE3, fg=OFFWHITE).pack()
 
         body = tk.Frame(self, bg=BG, padx=24, pady=16)
         body.pack(fill="both", expand=True)
@@ -1607,7 +1616,7 @@ class JanelaAtualizacao(tk.Toplevel):
                  justify="left").pack(anchor="w")
         tk.Label(body,
                  text=f"Versao atual:  {VERSAO_ATUAL}\nVersao nova:   {self.versao_nova}",
-                 font=("Courier", 11, "bold"), bg=BG, fg=VERDE_CLARO,
+                 font=("Courier", 11, "bold"), bg=BG, fg=VERDE2,
                  justify="left").pack(anchor="w", pady=(10,0))
 
         self.lbl_status = tk.Label(body, text="",
@@ -1619,7 +1628,7 @@ class JanelaAtualizacao(tk.Toplevel):
         rod.pack(fill="x", side="bottom")
 
         self.btn_sim = tk.Button(rod, text="✓  Atualizar agora",
-                  font=("Georgia", 11, "bold"), bg=VERDE_ESCURO, fg=OFFWHITE,
+                  font=("Georgia", 11, "bold"), bg=VERDE3, fg=OFFWHITE,
                   relief="flat", padx=16, pady=7, command=self._atualizar)
         self.btn_sim.pack(side="right", padx=14)
 
@@ -1669,7 +1678,7 @@ class WizardUnidade(tk.Toplevel):
         self.resizable(False, False)
         self.grab_set()
 
-        w, h = 560, 520
+        w, h = 560, 620
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
@@ -1677,12 +1686,12 @@ class WizardUnidade(tk.Toplevel):
 
     def _build(self):
         # Header
-        hdr = tk.Frame(self, bg=VERDE_ESCURO, pady=18)
+        hdr = tk.Frame(self, bg=VERDE3, pady=18)
         hdr.pack(fill="x")
         tk.Label(hdr, text="⚙  Configuracao da Unidade",
-                 font=("Georgia", 16, "bold"), bg=VERDE_ESCURO, fg=OFFWHITE).pack()
+                 font=("Georgia", 16, "bold"), bg=VERDE3, fg=OFFWHITE).pack()
         tk.Label(hdr, text="Preencha os dados desta unidade Hope Market",
-                 font=("Courier", 10), bg=VERDE_ESCURO, fg=CREME).pack(pady=(2,0))
+                 font=("Courier", 10), bg=VERDE3, fg=CREME).pack(pady=(2,0))
 
         body = tk.Frame(self, bg=BG, padx=30, pady=20)
         body.pack(fill="both", expand=True)
@@ -1722,7 +1731,7 @@ class WizardUnidade(tk.Toplevel):
         rod = tk.Frame(self, bg=BG2, pady=12)
         rod.pack(fill="x", side="bottom")
         tk.Button(rod, text="✓  Salvar e Iniciar", font=("Georgia", 11, "bold"),
-                  bg=VERDE_ESCURO, fg=OFFWHITE, relief="flat", padx=20, pady=8,
+                  bg=VERDE3, fg=OFFWHITE, relief="flat", padx=20, pady=8,
                   command=self._salvar).pack(side="right", padx=16)
         tk.Button(rod, text="Cancelar", font=("Courier", 10),
                   bg=BG3, fg=CINZA, relief="flat", padx=12, pady=8,
