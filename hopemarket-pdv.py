@@ -1,7 +1,7 @@
 """
 HOPE MARKET - PDV (Ponto de Venda)
 Sistema de caixa integrado ao Google Sheets
-v2.0 - Com limites mensais, validação e impressão direta
+v2.2 - Com limites mensais, validação e impressão direta
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
