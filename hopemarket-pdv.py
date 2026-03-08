@@ -6,6 +6,40 @@ v2.0 - Com limites mensais, validação e impressão direta
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading, os, json, requests
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LOG DE ERROS
+# ══════════════════════════════════════════════════════════════════════════════
+LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hopemarket_erros.log")
+
+def log_erro(origem, erro):
+    """Registra erro no arquivo de log com timestamp."""
+    try:
+        from datetime import datetime as _dt
+        timestamp = _dt.now().strftime("%d/%m/%Y %H:%M:%S")
+        linha = f"[{timestamp}] [{origem}] {erro}\n"
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(linha)
+        print(f"[LOG] {linha.strip()}")
+    except Exception:
+        pass
+
+def ler_log():
+    try:
+        if not os.path.exists(LOG_PATH):
+            return []
+        with open(LOG_PATH, "r", encoding="utf-8") as f:
+            linhas = f.readlines()
+        return [l.strip() for l in linhas[-200:]][::-1]
+    except Exception:
+        return []
+
+def limpar_log():
+    try:
+        open(LOG_PATH, "w").close()
+    except Exception:
+        pass
+
 from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -441,9 +475,13 @@ def conectar_sheets():
     return build("sheets", "v4", credentials=creds).spreadsheets()
 
 def buscar_beneficiarios():
-    res = conectar_sheets().values().get(
-        spreadsheetId=SHEETS_ID, range=f"{ABA_CADASTRO}!A2:Z1000").execute()
-    return res.get("values", [])
+    try:
+        res = conectar_sheets().values().get(
+            spreadsheetId=SHEETS_ID, range=f"{ABA_CADASTRO}!A2:Z1000").execute()
+        return res.get("values", [])
+    except Exception as ex:
+        log_erro("buscar_beneficiarios", str(ex))
+        raise
 
 def atualizar_sheets(linha_idx, novo_saldo, itens, hist_atual, row_atual):
     sheets = conectar_sheets()
@@ -713,6 +751,145 @@ def inicializar_aba_estoque():
         print(f"[Estoque] Erro ao inicializar aba: {ex}")
         return False
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FUNÇÕES DE RELATÓRIO
+# ══════════════════════════════════════════════════════════════════════════════
+
+def buscar_dados_relatorio():
+    """Lê planilha e retorna dados processados para relatórios."""
+    try:
+        res = conectar_sheets().values().get(
+            spreadsheetId=SHEETS_ID,
+            range=f"{ABA_CADASTRO}!A2:Z1000").execute()
+        rows = res.get("values", [])
+    except Exception as ex:
+        log_erro("Relatorio", f"Erro ao buscar planilha: {ex}")
+        return None
+
+    mes_atual = datetime.now().strftime("%m/%Y")
+    total_hc_mes     = 0
+    total_atend_mes  = 0
+    itens_count      = {nome: 0 for nome in ORDEM_ITENS_SHEETS}
+    benef_ativos     = []
+
+    for row in rows:
+        if not row: continue
+        nome  = row[0] if len(row) > 0 else ""
+        saldo = row[2] if len(row) > 2 else ""
+        hist  = row[3] if len(row) > 3 else ""
+
+        # Conta atendimentos do mes atual
+        atend_mes = 0
+        hc_mes    = 0
+        if hist:
+            for linha_hist in hist.split("\n"):
+                if mes_atual in linha_hist:
+                    atend_mes += 1
+
+        # Soma itens distribuídos (colunas F em diante)
+        total_itens_benef = 0
+        for i, nome_item in enumerate(ORDEM_ITENS_SHEETS):
+            col_idx = 5 + i
+            if len(row) > col_idx and row[col_idx]:
+                try:
+                    qtd = int(float(row[col_idx]))
+                    itens_count[nome_item] += qtd
+                    total_itens_benef += qtd
+                except: pass
+
+        if atend_mes > 0:
+            total_atend_mes += atend_mes
+            benef_ativos.append((nome, atend_mes, total_itens_benef))
+
+    # Ordena beneficiarios mais ativos
+    benef_ativos.sort(key=lambda x: x[1], reverse=True)
+
+    # Itens mais distribuídos
+    itens_ordenados = sorted(itens_count.items(), key=lambda x: x[1], reverse=True)
+
+    return {
+        "mes":           mes_atual,
+        "total_benef":   len(rows),
+        "atend_mes":     total_atend_mes,
+        "itens":         itens_ordenados,
+        "benef_ativos":  benef_ativos[:10],
+        "itens_count":   itens_count,
+    }
+
+
+def imprimir_relatorio(dados, impressora=None):
+    """Imprime relatório na impressora térmica."""
+    try:
+        import win32print, win32ui, win32con
+        nome_imp = impressora or win32print.GetDefaultPrinter()
+        dc = win32ui.CreateDC()
+        dc.CreatePrinterDC(nome_imp)
+
+        fonte_p = win32ui.CreateFont({"name": "Arial", "height": 22, "weight": win32con.FW_NORMAL, "charset": 0})
+        fonte_n = win32ui.CreateFont({"name": "Arial", "height": 26, "weight": win32con.FW_NORMAL, "charset": 0})
+        fonte_b = win32ui.CreateFont({"name": "Arial", "height": 26, "weight": win32con.FW_BOLD,   "charset": 0})
+        fonte_g = win32ui.CreateFont({"name": "Arial", "height": 36, "weight": win32con.FW_BOLD,   "charset": 0})
+
+        dc.StartDoc("Relatorio HopeMarket")
+        dc.StartPage()
+
+        MARGEM_X = 10
+        LARGURA  = 550
+        y        = 20
+        LINHA    = 32
+
+        def txt(t, fonte=None, centro=False):
+            nonlocal y
+            f = fonte or fonte_n
+            dc.SelectObject(f)
+            if centro:
+                lw = dc.GetTextExtent(t)[0]
+                x = MARGEM_X + (LARGURA - lw) // 2
+            else:
+                x = MARGEM_X
+            dc.TextOut(x, y, t)
+            y += LINHA
+
+        def sep():
+            nonlocal y
+            pen = win32ui.CreatePen(win32con.PS_SOLID, 1, 0)
+            dc.SelectObject(pen)
+            dc.MoveTo(MARGEM_X, y+4); dc.LineTo(MARGEM_X+LARGURA, y+4)
+            y += 20
+
+        txt("HOPE MARKET PDV", fonte_g, centro=True)
+        txt(f"Relatorio - {NOME_UNIDADE}", fonte_b, centro=True)
+        txt(datetime.now().strftime("%d/%m/%Y %H:%M"), fonte_p, centro=True)
+        sep()
+
+        txt(f"Mes: {dados['mes']}", fonte_b)
+        txt(f"Total beneficiarios: {dados['total_benef']}", fonte_n)
+        txt(f"Atendimentos no mes: {dados['atend_mes']}", fonte_n)
+        sep()
+
+        txt("TOP 10 ITENS DISTRIBUIDOS:", fonte_b)
+        for i, (item, qtd) in enumerate(dados["itens"][:10], 1):
+            if qtd > 0:
+                txt(f"  {i}. {item}: {qtd} unid", fonte_p)
+        sep()
+
+        txt("BENEFICIARIOS MAIS ATIVOS:", fonte_b)
+        for nome, atend, itens_t in dados["benef_ativos"][:5]:
+            txt(f"  {nome[:22]}: {atend}x", fonte_p)
+        sep()
+
+        txt("RuahSystems | Berg Braga", fonte_p, centro=True)
+
+        dc.EndPage()
+        dc.EndDoc()
+        dc.DeleteDC()
+        return True
+    except Exception as ex:
+        log_erro("ImprimirRelatorio", str(ex))
+        return False
+
 # ── JANELA DE CONFIGURAÇÕES ───────────────────────────────────────────────────
 class JanelaConfig(tk.Toplevel):
     def __init__(self, parent, cfg, callback):
@@ -883,6 +1060,10 @@ class HopeMarketPDV:
         tk.Button(topo, text="📦  Estoque", font=("Courier", 10),
                   bg=BG3, fg=OFFWHITE, relief="flat", padx=10,
                   command=self._abrir_estoque).pack(side="right", padx=4, pady=12)
+
+        tk.Button(topo, text="📊  Relatorios", font=("Courier", 10),
+                  bg=BG3, fg=OFFWHITE, relief="flat", padx=10,
+                  command=self._abrir_relatorios).pack(side="right", padx=4, pady=12)
 
         self.btn_atualizar = tk.Button(topo, text="🔄  Atualizar",
                   font=("Courier", 10), bg=BG3, fg=OFFWHITE,
@@ -1303,6 +1484,11 @@ class HopeMarketPDV:
             print(f"[Estoque] {len(self.estoque)} itens carregados")
         threading.Thread(target=load, daemon=True).start()
 
+    def _abrir_relatorios(self):
+        """Abre a janela de relatórios."""
+        imp = getattr(self, "impressora_selecionada", None)
+        JanelaRelatorios(self.root, impressora_sel=imp)
+
     def _abrir_estoque(self):
         """Abre a janela de estoque."""
         JanelaEstoque(self.root, self.estoque, self._recarregar_estoque)
@@ -1521,6 +1707,248 @@ class JanelaEstoque(tk.Toplevel):
 
 
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# JANELA DE RELATÓRIOS
+# ══════════════════════════════════════════════════════════════════════════════
+class JanelaRelatorios(tk.Toplevel):
+    def __init__(self, parent, impressora_sel=None):
+        super().__init__(parent)
+        self.impressora_sel = impressora_sel
+        self.dados = None
+        self.title(f"Relatorios — {NOME_UNIDADE}")
+        self.configure(bg=BG)
+        self.state("zoomed")
+
+        self._build()
+        self._carregar()
+
+    def _build(self):
+        # Topo
+        topo = tk.Frame(self, bg=VERDE3, pady=12)
+        topo.pack(fill="x")
+        tk.Label(topo, text="📊  Relatorios Hope Market",
+                 font=("Georgia", 16, "bold"), bg=VERDE3, fg=OFFWHITE).pack(side="left", padx=20)
+
+        self.btn_imprimir = tk.Button(topo, text="🖨  Imprimir Relatorio",
+                 font=("Courier", 10), bg=BG3, fg=OFFWHITE, relief="flat",
+                 padx=12, pady=6, command=self._imprimir)
+        self.btn_imprimir.pack(side="right", padx=8)
+
+        tk.Button(topo, text="🔄  Atualizar",
+                 font=("Courier", 10), bg=BG3, fg=OFFWHITE, relief="flat",
+                 padx=12, pady=6, command=self._carregar).pack(side="right", padx=4)
+
+        # Status
+        self.lbl_status = tk.Label(self, text="Carregando dados...",
+                 font=("Courier", 9), bg=BG, fg=AMARELO, anchor="w")
+        self.lbl_status.pack(fill="x", padx=16, pady=4)
+
+        # Notebook de abas
+        import tkinter.ttk as ttk
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("TNotebook",        background=BG,  borderwidth=0)
+        style.configure("TNotebook.Tab",    background=BG3, foreground=CINZA,
+                        padding=[14,6], font=("Courier", 10))
+        style.map("TNotebook.Tab",
+                  background=[("selected", VERDE3)],
+                  foreground=[("selected", OFFWHITE)])
+
+        self.nb = ttk.Notebook(self)
+        self.nb.pack(fill="both", expand=True, padx=12, pady=6)
+
+        self.aba_resumo  = tk.Frame(self.nb, bg=BG)
+        self.aba_itens   = tk.Frame(self.nb, bg=BG)
+        self.aba_benef   = tk.Frame(self.nb, bg=BG)
+        self.aba_log     = tk.Frame(self.nb, bg=BG)
+
+        self.nb.add(self.aba_resumo, text="  Resumo Geral  ")
+        self.nb.add(self.aba_itens,  text="  Itens Distribuídos  ")
+        self.nb.add(self.aba_benef,  text="  Beneficiários Ativos  ")
+        self.nb.add(self.aba_log,    text="  Log de Erros  ")
+
+        self._build_log_aba()
+
+    def _carregar(self):
+        self.lbl_status.config(text="⏳ Buscando dados na planilha...", fg=AMARELO)
+        def load():
+            dados = buscar_dados_relatorio()
+            self.after(0, lambda: self._renderizar(dados))
+        threading.Thread(target=load, daemon=True).start()
+
+    def _renderizar(self, dados):
+        if not dados:
+            self.lbl_status.config(text="❌ Erro ao carregar dados.", fg=VERMELHO)
+            return
+        self.dados = dados
+        self.lbl_status.config(
+            text=f"✓ {dados['total_benef']} beneficiários | {dados['atend_mes']} atendimentos em {dados['mes']}",
+            fg=VERDE)
+        self._build_resumo(dados)
+        self._build_itens(dados)
+        self._build_benef(dados)
+
+    def _card(self, parent, titulo, valor, sub="", col=0, row=0):
+        f = tk.Frame(parent, bg=BG3, padx=20, pady=16)
+        f.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
+        tk.Label(f, text=titulo, font=("Courier", 9), bg=BG3, fg=CINZA).pack(anchor="w")
+        tk.Label(f, text=str(valor), font=("Georgia", 28, "bold"), bg=BG3, fg=VERDE).pack(anchor="w")
+        if sub:
+            tk.Label(f, text=sub, font=("Courier", 9), bg=BG3, fg=CINZA).pack(anchor="w")
+
+    def _build_resumo(self, d):
+        for w in self.aba_resumo.winfo_children(): w.destroy()
+        self.aba_resumo.columnconfigure((0,1,2,3), weight=1)
+
+        # Cards de resumo
+        total_itens = sum(q for _, q in d["itens"])
+        top_item    = d["itens"][0][0] if d["itens"] else "-"
+        top_qtd     = d["itens"][0][1] if d["itens"] else 0
+        top_benef   = d["benef_ativos"][0][0] if d["benef_ativos"] else "-"
+
+        self._card(self.aba_resumo, "Beneficiários Cadastrados", d["total_benef"],   row=0, col=0)
+        self._card(self.aba_resumo, f"Atendimentos em {d['mes']}",  d["atend_mes"],  row=0, col=1)
+        self._card(self.aba_resumo, "Total Itens Distribuídos",    total_itens,       row=0, col=2)
+        self._card(self.aba_resumo, "Item Mais Distribuído",       top_item,
+                   sub=f"{top_qtd} unidades",                                         row=0, col=3)
+
+        # Mini tabela top 5 itens
+        tk.Label(self.aba_resumo, text="Top 5 Itens do Mês",
+                 font=("Georgia", 13, "bold"), bg=BG, fg=OFFWHITE).grid(
+                 row=1, column=0, columnspan=4, sticky="w", padx=16, pady=(16,4))
+
+        frame_top = tk.Frame(self.aba_resumo, bg=BG)
+        frame_top.grid(row=2, column=0, columnspan=4, sticky="ew", padx=16)
+        frame_top.columnconfigure(1, weight=1)
+
+        for i, (item, qtd) in enumerate(d["itens"][:5]):
+            if qtd == 0: continue
+            tk.Label(frame_top, text=f"{i+1}. {item}",
+                     font=("Courier", 11), bg=BG, fg=OFFWHITE).grid(
+                     row=i, column=0, sticky="w", pady=3)
+            # Barra de progresso visual
+            max_qtd = d["itens"][0][1] if d["itens"][0][1] > 0 else 1
+            pct = int((qtd / max_qtd) * 300)
+            bar_bg = tk.Frame(frame_top, bg=BG3, height=18, width=300)
+            bar_bg.grid(row=i, column=1, sticky="w", padx=(16,8), pady=3)
+            bar_bg.grid_propagate(False)
+            tk.Frame(bar_bg, bg=VERDE2, height=18, width=pct).place(x=0, y=0)
+            tk.Label(frame_top, text=f"{qtd} unid",
+                     font=("Courier", 10), bg=BG, fg=CINZA).grid(row=i, column=2, sticky="w")
+
+    def _build_itens(self, d):
+        for w in self.aba_itens.winfo_children(): w.destroy()
+
+        tk.Label(self.aba_itens, text="Todos os Itens Distribuídos",
+                 font=("Georgia", 13, "bold"), bg=BG, fg=OFFWHITE).pack(anchor="w", padx=16, pady=(12,6))
+
+        cols = ["Item", "Qtd Total", "% do Total"]
+        total_geral = sum(q for _, q in d["itens"]) or 1
+
+        frame_t = tk.Frame(self.aba_itens, bg=BG)
+        frame_t.pack(fill="both", expand=True, padx=16, pady=4)
+
+        # Header
+        for c, col in enumerate(cols):
+            tk.Label(frame_t, text=col, font=("Courier", 10, "bold"),
+                     bg=VERDE3, fg=OFFWHITE, padx=12, pady=6, anchor="w",
+                     width=22 if c==0 else 12).grid(row=0, column=c, sticky="ew", padx=1, pady=1)
+
+        for r, (item, qtd) in enumerate(d["itens"], 1):
+            bg_row = BG3 if r % 2 == 0 else BG2
+            pct = f"{(qtd/total_geral)*100:.1f}%"
+            for c, val in enumerate([item, str(qtd), pct]):
+                fg = VERDE if qtd > 0 else CINZA
+                tk.Label(frame_t, text=val, font=("Courier", 10),
+                         bg=bg_row, fg=fg, padx=12, pady=5, anchor="w",
+                         width=22 if c==0 else 12).grid(row=r, column=c, sticky="ew", padx=1, pady=1)
+
+    def _build_benef(self, d):
+        for w in self.aba_benef.winfo_children(): w.destroy()
+
+        tk.Label(self.aba_benef, text="Beneficiários Mais Ativos (todos os tempos)",
+                 font=("Georgia", 13, "bold"), bg=BG, fg=OFFWHITE).pack(anchor="w", padx=16, pady=(12,6))
+
+        if not d["benef_ativos"]:
+            tk.Label(self.aba_benef, text="Nenhum atendimento registrado.",
+                     font=("Courier", 11), bg=BG, fg=CINZA).pack(padx=16, pady=20)
+            return
+
+        frame_t = tk.Frame(self.aba_benef, bg=BG)
+        frame_t.pack(fill="both", expand=True, padx=16)
+
+        cols = ["#", "Nome", "Atendimentos", "Total Itens"]
+        widths = [4, 30, 14, 12]
+        for c, (col, w) in enumerate(zip(cols, widths)):
+            tk.Label(frame_t, text=col, font=("Courier", 10, "bold"),
+                     bg=VERDE3, fg=OFFWHITE, padx=10, pady=6,
+                     anchor="w", width=w).grid(row=0, column=c, sticky="ew", padx=1, pady=1)
+
+        for r, (nome, atend, total_it) in enumerate(d["benef_ativos"], 1):
+            bg_row = BG3 if r % 2 == 0 else BG2
+            medal = "🥇" if r==1 else "🥈" if r==2 else "🥉" if r==3 else f"{r} "
+            for c, (val, w) in enumerate(zip([medal, nome, str(atend), str(total_it)], widths)):
+                tk.Label(frame_t, text=val, font=("Courier", 10),
+                         bg=bg_row, fg=OFFWHITE, padx=10, pady=5,
+                         anchor="w", width=w).grid(row=r, column=c, sticky="ew", padx=1, pady=1)
+
+    def _build_log_aba(self):
+        for w in self.aba_log.winfo_children(): w.destroy()
+
+        topo_log = tk.Frame(self.aba_log, bg=BG)
+        topo_log.pack(fill="x", padx=16, pady=(12,4))
+        tk.Label(topo_log, text="Log de Erros do Sistema",
+                 font=("Georgia", 13, "bold"), bg=BG, fg=OFFWHITE).pack(side="left")
+        tk.Button(topo_log, text="🗑  Limpar Log",
+                  font=("Courier", 9), bg=VERMELHO, fg=OFFWHITE, relief="flat",
+                  padx=8, pady=4, command=self._limpar_log).pack(side="right")
+        tk.Button(topo_log, text="🔄  Atualizar",
+                  font=("Courier", 9), bg=BG3, fg=OFFWHITE, relief="flat",
+                  padx=8, pady=4, command=self._build_log_aba).pack(side="right", padx=6)
+
+        linhas = ler_log()
+
+        frame_scroll = tk.Frame(self.aba_log, bg=BG)
+        frame_scroll.pack(fill="both", expand=True, padx=16, pady=4)
+
+        scrollbar = tk.Scrollbar(frame_scroll)
+        scrollbar.pack(side="right", fill="y")
+
+        txt_widget = tk.Text(frame_scroll, bg=BG3, fg=OFFWHITE,
+                             font=("Courier", 9), relief="flat",
+                             yscrollcommand=scrollbar.set, state="normal")
+        txt_widget.pack(fill="both", expand=True)
+        scrollbar.config(command=txt_widget.yview)
+
+        if not linhas:
+            txt_widget.insert("end", "Nenhum erro registrado. Tudo funcionando bem! ✓")
+            txt_widget.config(fg=VERDE)
+        else:
+            for linha in linhas:
+                cor = "red" if "Erro" in linha or "ERRO" in linha else "white"
+                txt_widget.insert("end", linha + "\n")
+        txt_widget.config(state="disabled")
+
+    def _limpar_log(self):
+        if messagebox.askyesno("Limpar Log", "Deseja limpar todo o log de erros?", parent=self):
+            limpar_log()
+            self._build_log_aba()
+
+    def _imprimir(self):
+        if not self.dados:
+            messagebox.showwarning("Aguarde", "Dados ainda carregando.", parent=self); return
+        self.btn_imprimir.config(state="disabled", text="⏳ Imprimindo...")
+        def imp():
+            ok = imprimir_relatorio(self.dados, self.impressora_sel)
+            msg = "Relatório impresso!" if ok else "Erro ao imprimir."
+            cor = VERDE if ok else VERMELHO
+            self.after(0, lambda: [
+                self.lbl_status.config(text=msg, fg=cor),
+                self.btn_imprimir.config(state="normal", text="🖨  Imprimir Relatório")
+            ])
+        threading.Thread(target=imp, daemon=True).start()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SISTEMA DE ATUALIZAÇÃO AUTOMÁTICA
