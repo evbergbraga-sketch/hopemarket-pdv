@@ -1,7 +1,7 @@
 """
 HOPE MARKET - PDV (Ponto de Venda)
 Sistema de caixa integrado ao Google Sheets
-v2.2 - Com limites mensais, validação e impressão direta
+v2.0 - Com limites mensais, validação e impressão direta
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -48,7 +48,7 @@ LOGO_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABt
 
 # ── CONFIGURAÇÕES ─────────────────────────────────────────────────────────────
 # ── VERSÃO E ATUALIZAÇÃO AUTOMÁTICA ───────────────────────────────────────────
-VERSAO_ATUAL   = "2.0"
+VERSAO_ATUAL   = "2.1"
 UPDATE_URL     = "https://raw.githubusercontent.com/evbergbraga-sketch/hopemarket-pdv/refs/heads/main/hopemarket-pdv.py"
 VERSION_URL    = "https://raw.githubusercontent.com/evbergbraga-sketch/hopemarket-pdv/refs/heads/main/versao.txt"
 
@@ -1215,9 +1215,16 @@ class HopeMarketPDV:
         tk.Button(rod, text="✕  Cancelar", font=("Georgia", 10), bg=BG3, fg=CINZA,
                   relief="flat", pady=8, command=self._cancelar).grid(row=5, column=0, sticky="ew", pady=2)
 
-        self.lbl_status = tk.Label(self.root, text="Carregando...",
+        rodape = tk.Frame(self.root, bg=BG)
+        rodape.pack(fill="x", padx=14, pady=4)
+        rodape.columnconfigure(0, weight=1)
+
+        self.lbl_status = tk.Label(rodape, text="Carregando...",
                                    font=("Courier", 9), bg=BG, fg=CREME, anchor="w")
-        self.lbl_status.pack(fill="x", padx=14, pady=4)
+        self.lbl_status.grid(row=0, column=0, sticky="ew")
+
+        tk.Label(rodape, text=f"v{VERSAO_ATUAL}  •  RuahSystems | Berg Braga",
+                 font=("Courier", 8), bg=BG, fg=CINZA, anchor="e").grid(row=0, column=1, padx=(8,0))
 
     def _abrir_config(self):
         def callback(nova_cfg):
@@ -1437,7 +1444,8 @@ class HopeMarketPDV:
         """Verifica silenciosamente se ha versao nova no GitHub."""
         def resultado(versao_nova):
             if versao_nova:
-                self.root.after(0, lambda: JanelaAtualizacao(self.root, versao_nova))
+                # Garante execucao na thread principal do tkinter
+                self.root.after(100, lambda v=versao_nova: JanelaAtualizacao(self.root, v))
         verificar_atualizacao(resultado)
 
     def _carregar_beneficiarios(self):
@@ -1958,12 +1966,20 @@ def verificar_atualizacao(callback_resultado):
     """Verifica silenciosamente se há versão nova no GitHub."""
     def check():
         try:
+            # Lê versão local (salva após atualização) ou usa VERSAO_ATUAL
+            versao_local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "versao_local.txt")
+            if os.path.exists(versao_local_path):
+                with open(versao_local_path) as vf:
+                    versao_base = vf.read().strip()
+            else:
+                versao_base = VERSAO_ATUAL
+
             print(f"[Update] Verificando versao em: {VERSION_URL}")
             resp = requests.get(VERSION_URL, timeout=5)
             versao_nova = resp.text.strip()
-            print(f"[Update] Versao atual: {VERSAO_ATUAL} | Versao GitHub: {versao_nova}")
+            print(f"[Update] Versao atual: {versao_base} | Versao GitHub: {versao_nova}")
             if resp.status_code == 200:
-                if versao_nova != VERSAO_ATUAL:
+                if versao_nova != versao_base:
                     print(f"[Update] Nova versao disponivel: {versao_nova}")
                     callback_resultado(versao_nova)
                 else:
@@ -2003,6 +2019,11 @@ def baixar_atualizacao(versao_nova, callback_progresso, callback_concluido):
                 os.remove(arquivo_backup)
             os.rename(arquivo_atual, arquivo_backup)
             os.rename(arquivo_temp, arquivo_atual)
+
+            # Salva versao local para nao pedir de novo
+            versao_local = os.path.join(os.path.dirname(arquivo_atual), "versao_local.txt")
+            with open(versao_local, "w") as vf:
+                vf.write(versao_nova)
 
             callback_concluido(True, None)
         except Exception as ex:
