@@ -1218,13 +1218,20 @@ class HopeMarketPDV:
         rodape = tk.Frame(self.root, bg=BG)
         rodape.pack(fill="x", padx=14, pady=4)
         rodape.columnconfigure(0, weight=1)
+        rodape.columnconfigure(1, weight=1)
 
         self.lbl_status = tk.Label(rodape, text="Carregando...",
                                    font=("Courier", 9), bg=BG, fg=CREME, anchor="w")
         self.lbl_status.grid(row=0, column=0, sticky="ew")
 
-        tk.Label(rodape, text=f"v{VERSAO_ATUAL}  •  RuahSystems | Berg Braga",
-                 font=("Courier", 8), bg=BG, fg=CINZA, anchor="e").grid(row=0, column=1, padx=(8,0))
+        tk.Label(rodape, text="PDV  •  SISTEMA DE PONTO DE VENDA",
+                 font=("Courier", 8), bg=BG, fg=CINZA, anchor="center").grid(row=0, column=1)
+
+        # Lê versão real do arquivo local se existir
+        _vpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "versao_local.txt")
+        _v = open(_vpath).read().strip() if os.path.exists(_vpath) else VERSAO_ATUAL
+        tk.Label(rodape, text=f"v{_v}  •  RuahSystems | Berg Braga",
+                 font=("Courier", 8), bg=BG, fg=CINZA, anchor="e").grid(row=0, column=2, padx=(8,0))
 
     def _abrir_config(self):
         def callback(nova_cfg):
