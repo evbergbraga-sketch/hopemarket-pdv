@@ -86,25 +86,30 @@ ABA_ESTOQUE           = "Estoque"
 ESTOQUE_MINIMO_PADRAO = 5
 
 TABELA_PRECOS = {
-    "Feijão": 14, "Arroz": 12, "Sal": 8, "Açúcar": 15,"Absorvente": 25, 
+    "Feijão": 14, "Arroz": 12, "Sal": 8, "Açúcar": 15,
     "Farinha de Trigo": 15, "Farinha de Mandioca": 15, "Fubá": 12,
-    "Macarrão": 14, "Molho de Tomate": 10, "Enlatado": 25,
+    "Macarrão": 14, "Molho de Tomate": 10, "Milho": 10, "Ervilha": 10, "Enlatado": 25,
     "Massa de Bolo": 18, "Óleo": 60, "Café 100g": 14,
     "Café 250g": 35, "Café 500g": 70, "Achocolatado": 32,
     "Leite em Pó": 65, "Biscoito Doce": 14, "Biscoito Salgado": 14,
-    "Extra": 5,
+    "Extra": 5, "Absorvente": 25, "Desinfetante": 32, "Detergente": 15, "Esponja": 8, 
+    "Escova dental": 15, "Fralda": 35, "Multiuso": 14, "Pasta dental": 15, "Sabão em pó": 65, 
+    "Sabonete": 10
+    
 }
 ORDEM_ITENS_SHEETS = list(TABELA_PRECOS.keys())
 
 # Limites mensais por item (quantidade máxima por mês)
 LIMITES_MENSAIS = {
-    "Feijão": 4, "Arroz": 4, "Sal": 1, "Açúcar": 4,"Absorvente": 2, 
+    "Feijão": 4, "Arroz": 4, "Sal": 1, "Açúcar": 4, 
     "Farinha de Trigo": 2, "Farinha de Mandioca": 1, "Fubá": 1,
-    "Macarrão": 2, "Molho de Tomate": 2, "Enlatado": 6,
+    "Macarrão": 2, "Molho de Tomate": 2,  "Milho": 2, "Ervilha": 2, "Enlatado": 6,
     "Massa de Bolo": 1, "Óleo": 1, "Café 100g": None,  # controlado por gramas
     "Café 250g": None, "Café 500g": None,
     "Achocolatado": 1, "Leite em Pó": 2,
-    "Biscoito Doce": 2, "Biscoito Salgado": 2, "Extra": 1,
+    "Biscoito Doce": 2, "Biscoito Salgado": 2, "Extra": 1, "Absorvente": 2, "Desinfetante": 2, "Detergente": 2, "Esponja": 2, 
+    "Escova dental": 1, "Fralda": 2, "Multiuso": 2, "Pasta dental": 2, "Sabão em pó": 2, 
+    "Sabonete": 4
 }
 LIMITE_CAFE_GRAMAS = 500  # máximo 500g de café por mês
 
