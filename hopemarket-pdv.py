@@ -99,6 +99,19 @@ TABELA_PRECOS = {
 }
 ORDEM_ITENS_SHEETS = list(TABELA_PRECOS.keys())
 
+def col_letra(idx_zero):
+    """Converte índice 0-based para letra(s) de coluna do Sheets (A, B, ..., Z, AA, AB...)."""
+    resultado = ""
+    n = idx_zero + 1  # 1-based
+    while n > 0:
+        n, resto = divmod(n - 1, 26)
+        resultado = chr(65 + resto) + resultado
+    return resultado
+
+def col_item(i):
+    """Retorna a letra da coluna do Sheets para o i-ésimo item (base F = índice 5)."""
+    return col_letra(5 + i)
+
 # Limites mensais por item (quantidade máxima por mês)
 LIMITES_MENSAIS = {
     "Feijão": 4, "Arroz": 4, "Sal": 1, "Açúcar": 4, 
@@ -511,7 +524,7 @@ def atualizar_sheets(linha_idx, novo_saldo, itens, hist_atual, row_atual):
                     qtd_atual = 0
             qtd_total = qtd_atual + qtd_nova
             updates.append({
-                "range": f"{ABA_CADASTRO}!{chr(ord('F')+i)}{linha}",
+                "range": f"{ABA_CADASTRO}!{col_item(i)}{linha}",
                 "values": [[qtd_total]]
             })
     if updates:
