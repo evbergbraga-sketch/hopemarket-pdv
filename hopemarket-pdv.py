@@ -86,7 +86,7 @@ ABA_ESTOQUE           = "Estoque"
 ESTOQUE_MINIMO_PADRAO = 5
 
 TABELA_PRECOS = {
-    "Feijão": 14, "Arroz": 12, "Sal": 8, "Açúcar": 15,
+    "Feijão": 14, "Arroz": 12, "Sal": 8, "Açúcar": 15,"Absorvente": 25, 
     "Farinha de Trigo": 15, "Farinha de Mandioca": 15, "Fubá": 12,
     "Macarrão": 14, "Molho de Tomate": 10, "Enlatado": 25,
     "Massa de Bolo": 18, "Óleo": 60, "Café 100g": 14,
@@ -98,7 +98,7 @@ ORDEM_ITENS_SHEETS = list(TABELA_PRECOS.keys())
 
 # Limites mensais por item (quantidade máxima por mês)
 LIMITES_MENSAIS = {
-    "Feijão": 4, "Arroz": 4, "Sal": 1, "Açúcar": 4,
+    "Feijão": 4, "Arroz": 4, "Sal": 1, "Açúcar": 4,"Absorvente": 2, 
     "Farinha de Trigo": 2, "Farinha de Mandioca": 1, "Fubá": 1,
     "Macarrão": 2, "Molho de Tomate": 2, "Enlatado": 6,
     "Massa de Bolo": 1, "Óleo": 1, "Café 100g": None,  # controlado por gramas
