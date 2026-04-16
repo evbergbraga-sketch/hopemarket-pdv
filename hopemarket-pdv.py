@@ -48,7 +48,7 @@ LOGO_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABt
 
 # ── CONFIGURAÇÕES ─────────────────────────────────────────────────────────────
 # ── VERSÃO E ATUALIZAÇÃO AUTOMÁTICA ───────────────────────────────────────────
-VERSAO_ATUAL   = "2.5"
+VERSAO_ATUAL   = "2.4"
 UPDATE_URL     = "https://raw.githubusercontent.com/evbergbraga-sketch/hopemarket-pdv/refs/heads/main/hopemarket-pdv.py"
 VERSION_URL    = "https://raw.githubusercontent.com/evbergbraga-sketch/hopemarket-pdv/refs/heads/main/versao.txt"
 
